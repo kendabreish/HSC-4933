@@ -8,7 +8,7 @@
 # optionally saves figures                    #
 # for educational use only                    #
 ###############################################
-from email.policy import linesep_splitter
+
 
 # imports
 import matplotlib.pyplot as plt
@@ -86,7 +86,7 @@ save_scatter = input (
     "\nwould you like to save the sctaterplot? (yes/no): "
 )
 
-if save_scatter.lower == "yes":
+if save_scatter.lower() == "yes":
     scatter_file = input(
         "enter scatterplot file name (example: fig_1.png): "
     )
@@ -97,7 +97,7 @@ if save_scatter.lower == "yes":
 # perform OLS regression
 x = sm.add_constant(data[x_col])
 
-model = sm. OLS(
+model = sm.OLS(
     data[y_col],
     x
 ).fit()
@@ -142,15 +142,13 @@ ax.grid()
 save_regression = input (
     "\nwould you like to save the scatterplot with regression plot? (yes/no): "
 )
-if save_regression.lower == "yes":
+
+if save_regression.lower() == "yes":
     ols_file = input(
         "enter regression figure file name (example: fig_2.png): "
     )
-
-ols_file = "lwt_vs_bwt_ols.png"
-fig.savefig(ols_file, dpi=300)
-
-print(f"saved scatterplot with OLS line-> {ols_file}")
+    fig.savefig(ols_file, dpi=300)
+    print(f"saved scatterplot with OLS line -> {ols_file}")
 
 # display figure
 plt.show()
