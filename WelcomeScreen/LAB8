@@ -1,0 +1,264 @@
+# ------------------------------------------------------------- #
+# Lab 8: Logistic and Count-Variable Regression
+# Course: HSC4933
+# Kenda S Breish | 10/24/2026
+# ------------------------------------------------------------- #
+# This script loads a dataset, cleans column names,
+# allows the user to select predictor and a response variable,
+# removes missing data, runs a regression model, and allows
+# the output to be saved to a text file.
+# ------------------------------------------------------------- #
+
+import re
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from sklearn.metrics import (
+    accuracy_score,
+    confusion_matrix,
+    classification_report,
+)
+from statsmodels.stats.outliers_influence import variance_inflation_factor
+
+# Convert column names to lowercase snake_case
+def clean_column_names(df):
+    cleaned_names = []
+
+    for column in df.columns:
+        column = str(column).strip().lower()
+        column = re.sub(r"[^a-z0-9]+", "_", column)
+        column = re.sub(r"_+", "_", column).strip("_")
+        cleaned_names.append(column)
+
+    df.columns = cleaned_names
+    return df
+
+# run logistic regression or poisson regression
+def run_regression(file_path, regression_type, predictors, response):
+
+    # load the dataset and clean its column names
+    df = pd.read_csv(file_path)
+    df = clean_column_names(df)
+
+    # check that all selected columns exist
+    selected_columns = predictors + [response]
+
+    missing_columns = [
+        column for column in selected_columns
+        if column not in df.columns
+    ]
+
+    if missing_columns:
+        raise ValueError(
+            f"These columns were not found: {missing_columns}"
+        )
+
+    # keep the selected columns and conver them to numeric values
+    data = df[selected_columns].copy()
+
+    for column in selected_columns:
+        data[column] = pd.to_numeric(
+            data[column], errors="coerce"
+        )
+
+    # remove rows with missing or infinite values
+    original_rows = len(data)
+
+    data = data.replace(
+        [np.inf, -np.inf], np.nan
+    ).dropna()
+
+    removed_rows = original_rows - len(data)
+
+    # separate the predictors and response variable
+    X = data[predictors]
+    y = data[response]
+
+    # add a constant for the intercept
+    X = sm.add_constant(X, has_constant="add")
+
+    # store the output so it can be printed or saved
+    output =[]
+
+    output.append(f"Dataset: {file_path}")
+    output.append(f"regression type: {regression_type}")
+    output.append(f"Response variable: {response}")
+    output.append(f"Predictors: {','.join(predictors)}")
+    output.append(f"Rows used: {len(data)}")
+    output.append(f"Rows removed: {removed_rows}")
+    output.append("")
+
+    # logistic regression classifies binary variables
+    if regression_type == "logistic":
+
+        # check that all selected variables contain only 0 and 1
+        for column in selected_columns:
+            if not set(data[column].unique()).issubset({0,1}):
+                raise ValueError(
+                    f"{column} must contain only 0 and 1."
+                )
+
+        # fit the logistic regression model
+        model = sm.Logit(y, X).fit(disp=False)
+
+        # predict the response categories
+        predictions = (
+            model.predict(X) >= 0.5
+        ).astype(int)
+
+        # calculate the confusion matrix and accuracy
+        matrix = confusion_matrix(
+            y,predictions, labels=[0,1]
+        )
+
+        accuracy = accuracy_score(y, predictions)
+
+        # save the model summary and classification results
+        output.append(model.summary().as_text())
+        output.append("")
+        output.append("Confusion Matrix:")
+        output.append("Rows = actual; columns = predicted (0,1)")
+        output.append(str(matrix))
+        output.append("")
+        output.append(f"Accuracy: {accuracy:.4f}")
+        output.append("")
+        output.append("Classification Report:")
+        output.append(
+            classification_report(
+                y,
+                predictions,
+                labels=[0,1],
+                zero_division=0
+            )
+        )
+        output.append(
+            f"McFadden pseudo-R-squared: {model.prsquared:.4f}"
+        )
+
+    # Poisson regression models nonnegative count outcomes
+    elif regression_type == "poisson":
+
+        # check that the response is nonnegative
+        if (y < 0).any():
+            raise ValueError(
+                "The response variable cannot contain negative values."
+            )
+        # Fit the poisson regression model
+        model = sm.GLM(
+            y, X, family=sm.families.Poisson()
+        ).fit()
+
+        # calculate the variance inflation factor for each predictor
+        vif_results = []
+
+        for index, column in enumerate(predictors):
+            vif = variance_inflation_factor(
+                data[predictors].to_numpy(), index
+            )
+
+            vif_results.append({
+                "Predictor": column,
+                "VIF": vif
+            })
+
+        vif_df = pd.DataFrame(vif_results)
+
+        # Save the model summary and VIF results
+        output.append(model.summary().as_text())
+        output.append("")
+        output.append("Variance Inflation Factors (VIF):")
+        output.append(vif_df.to_string(index=False))
+        output.append("")
+        output.append(
+            f"Cox-Snell pseudo-R-squared: "
+            f"{model.pseudo_rsquared(kind='cs'):.4f}"
+        )
+        output.append(
+            "\nNote: The selected health prevalence variables "
+            "are estimates, not raw counts."
+        )
+
+    else:
+        raise ValueError(
+            "Choose either 'logistic' or 'poisson'."
+        )
+
+    # return all results as one text report
+    return "\n".join(output)
+
+# Main function starts the program
+def main():
+
+    # Ask the user to enter the dataset filename.
+    file_path = input(
+        "Enter the dataset filename, including.csv:"
+    ).strip()
+
+    # Load the dataset and display its column names.
+    df = pd.read_csv(file_path)
+    df = clean_column_names(df)
+
+    print("\nAvailable columns:")
+
+    for column in df.columns:
+        print(column)
+
+    # Ask which regression model the user wants.
+    regression_type = input(
+        "\nEnter the regression type (logistic' or 'poisson) : "
+    ).strip().lower()
+
+    # Allow the user to select multiple predictors
+    predictors_input = input(
+        "Enter predictor names separated by commas:"
+    ).strip().lower()
+
+    predictors = [
+        column.strip()
+        for column in predictors_input.split(",")
+        if column.strip()
+    ]
+
+    # ask for the response variable
+    response = input(
+        "Enter the response column name: "
+    ).strip().lower()
+
+    # run the selected regression
+    results = run_regression(
+        file_path,
+        regression_type,
+        predictors,
+        response
+    )
+
+    # print the regression results
+    print("\n" + results)
+    save_output = input(
+        "\nSave output to a .txt file? (yes/no): "
+    ).strip().lower()
+
+    if save_output in ["yes", "y"]:
+
+        # ask for a custom output filename
+        output_file = input(
+            "Enter the output file name: "
+        ).strip()
+
+        # add .txt if the user did not include the extension
+        if not output_file.lower().endswith(".txt"):
+            output_file += ".txt"
+
+        # write the results to the text file
+        with open(
+            output_file, "w", encoding="utf-8"
+        ) as file:
+            file.write(results)
+
+            print(f"Output saved to {output_file}")
+
+# run the main function
+if __name__ == "__main__":
+    main()
+
+
